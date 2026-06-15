@@ -1,0 +1,184 @@
+// Delphine Swimwear — Prisma schema
+// Postgres-backed. Works on Vercel Postgres, Neon, Supabase, Railway, etc.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────────── Catalog ─────────────────────────────
+
+model Product {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  subtitle    String
+  category    String
+  description String   @db.Text
+  priceCents  Int
+  currency    String   @default("EUR")
+  badge       String?
+  mainImage   String
+  altImage    String
+  swatchHex   String   @default("#1B1916")
+  // Per-product list of sizes that exist for this style. Stock is
+  // tracked per-size in the Variant table.
+  sizes       String[] @default(["S", "M", "L"])
+  active      Boolean  @default(true)
+  featured    Boolean  @default(false)
+  sortOrder   Int      @default(0)
+
+  variants  Variant[]
+  orderItems OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category, active])
+  @@index([featured, active])
+}
+
+model Variant {
+  id        String  @id @default(cuid())
+  productId String
+  size      String
+  stock     Int     @default(0)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, size])
+  @@index([productId])
+}
+
+// ───────────────────────────── Orders ──────────────────────────────
+
+enum OrderStatus {
+  pending
+  processing
+  shipped
+  delivered
+  cancelled
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  failed
+  refunded
+}
+
+model Order {
+  id              String        @id @default(cuid())
+  orderNumber     String        @unique
+  // Database-generated sequence for the human-readable order number suffix.
+  // Filled by trigger / fallback in createOrder. No more collisions.
+  seq             Int           @default(autoincrement())
+
+  email           String
+  customerName    String
+  phone           String?       // includes the dial-code prefix
+
+  // shipping
+  address1        String
+  address2        String?
+  city            String
+  postalCode      String
+  country         String        // ISO-3166 alpha-2 country code
+  countryName     String
+
+  // money (all in cents)
+  subtotalCents   Int
+  shippingCents   Int
+  taxCents        Int           @default(0)
+  taxRate         Float         @default(0) // e.g. 0.20 for 20%
+  totalCents      Int
+  currency        String        @default("EUR")
+
+  shippingMethod  String        @default("standard") // "standard" | "express"
+  status          OrderStatus   @default(pending)
+  paymentStatus   PaymentStatus @default(pending)
+  paymentMethod   String        @default("pok")
+  paymentRef      String?
+
+  trackingNumber  String?
+  trackingUrl     String?
+  notes           String?       @db.Text
+
+  items           OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id          String  @id @default(cuid())
+  orderId     String
+  productId   String?
+  productSlug String
+  productName String
+  size        String
+  color       String
+  priceCents  Int
+  quantity    Int
+  image       String
+
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+}
+
+// ─────────────────────── Contact / Newsletter ──────────────────────
+
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  subject   String?
+  message   String   @db.Text
+  read      Boolean  @default(false)
+  ipHash    String?  // sha256 of IP for spam analysis (privacy-preserving)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model NewsletterSubscriber {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  status          String    @default("pending") // "pending" | "active" | "unsubscribed"
+  source          String?   // "footer" | "popup" | "checkout" | "manual"
+  // Double-opt-in confirmation token. Cleared once confirmed.
+  confirmToken    String?   @unique
+  confirmedAt     DateTime?
+  // Persistent unsubscribe token, embedded in every email.
+  unsubscribeToken String   @unique @default(cuid())
+  subscribedAt    DateTime  @default(now())
+  unsubscribedAt  DateTime?
+
+  @@index([status])
+}
+
+// ──────────── Webhook idempotency / log ────────────
+
+model WebhookEvent {
+  id          String   @id @default(cuid())
+  // External ID from the provider (POK transaction id, Stripe event id, …).
+  externalId  String   @unique
+  provider    String   // "pok" | "stripe"
+  eventType   String   // "payment.succeeded" | "payment.failed" | …
+  payload     String   @db.Text
+  processed   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@index([provider, eventType])
+}
