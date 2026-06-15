@@ -7,8 +7,16 @@
 import { prisma, hasDatabase } from '@/lib/prisma';
 import { findCountry } from '@/lib/data/countries';
 import { quote } from '@/lib/pricing';
+import { STATIC_PRODUCTS } from '@/lib/data/products';
 import type { OrderRequest } from '@/lib/validation';
 import type { OrderStatus, ShippingMethod } from '@/lib/types';
+
+// Catalog price fallback for any slug not present in the DB. The DB row is
+// always preferred; this just guarantees we can resolve a trusted price even
+// for static-only products.
+const STATIC_PRICE_CENTS_BY_SLUG = new Map<string, number>(
+  STATIC_PRODUCTS.map((p) => [p.slug, p.priceCents]),
+);
 
 export interface OrderRow {
   id: string;
@@ -55,6 +63,17 @@ export class InsufficientStockError extends Error {
     super('INSUFFICIENT_STOCK');
     this.details = details;
     this.name = 'InsufficientStockError';
+  }
+}
+
+// Thrown when an order line references a product we can't price from the
+// catalog (DB or static). Treated as a 400 — the cart is stale or tampered.
+export class UnknownProductError extends Error {
+  slugs: string[];
+  constructor(slugs: string[]) {
+    super('UNKNOWN_PRODUCT');
+    this.slugs = slugs;
+    this.name = 'UnknownProductError';
   }
 }
 
@@ -109,16 +128,6 @@ export async function createOrder({ body }: CreateOrderArgs): Promise<OrderRow> 
   const country = findCountry(body.shipping.country);
   if (!country) throw new Error('INVALID_COUNTRY');
 
-  const itemsSubtotalCents = body.items.reduce(
-    (sum, i) => sum + Math.round(i.price * 100) * i.quantity,
-    0,
-  );
-  const q = quote({
-    itemsSubtotalCents,
-    countryCode: body.shipping.country,
-    shippingMethod: body.shippingMethod as ShippingMethod,
-  });
-
   const customerName = `${body.shipping.firstName} ${body.shipping.lastName}`.trim();
   const phoneFull = `+${findCountry(body.shipping.phoneCountry)?.dial ?? ''}${body.shipping.phone}`;
 
@@ -132,6 +141,31 @@ export async function createOrder({ body }: CreateOrderArgs): Promise<OrderRow> 
     const productBySlug = new Map<string, any>(
       products.map((p: any) => [p.slug, p]),
     );
+
+    // ── Authoritative pricing ──────────────────────────────────────────
+    // NEVER trust the price the browser sent (body.items[].price). Resolve
+    // every line price from the catalog — DB row first, static catalog as
+    // fallback — and reject any slug we can't price. This is what prevents
+    // a tampered cart from checking out a €220 piece for €0.01.
+    const priceCentsBySlug = new Map<string, number>();
+    const unknownSlugs: string[] = [];
+    for (const slug of productSlugs) {
+      const cents =
+        productBySlug.get(slug)?.priceCents ?? STATIC_PRICE_CENTS_BY_SLUG.get(slug);
+      if (typeof cents !== 'number') unknownSlugs.push(slug);
+      else priceCentsBySlug.set(slug, cents);
+    }
+    if (unknownSlugs.length > 0) throw new UnknownProductError(unknownSlugs);
+
+    const itemsSubtotalCents = body.items.reduce(
+      (sum, i) => sum + (priceCentsBySlug.get(i.slug) ?? 0) * i.quantity,
+      0,
+    );
+    const q = quote({
+      itemsSubtotalCents,
+      countryCode: body.shipping.country,
+      shippingMethod: body.shippingMethod as ShippingMethod,
+    });
 
     const insufficient: InsufficientStockError['details'] = [];
     const stockOps: Promise<unknown>[] = [];
@@ -195,7 +229,7 @@ export async function createOrder({ body }: CreateOrderArgs): Promise<OrderRow> 
             productName: i.name,
             size: i.size,
             color: i.color,
-            priceCents: Math.round(i.price * 100),
+            priceCents: priceCentsBySlug.get(i.slug) ?? 0,
             quantity: i.quantity,
             image: i.image,
           })),

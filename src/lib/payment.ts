@@ -14,6 +14,9 @@ export interface PaymentSession {
 }
 
 export interface CreateSessionInput {
+  /** Internal cuid — used for the (unguessable) customer-facing order URL. */
+  orderId: string;
+  /** Human order number (e.g. DEL-2026-0001) — used as the payment reference. */
   orderNumber: string;
   amountCents: number;
   currency: string;
@@ -28,9 +31,11 @@ export async function createPaymentSession(
   const merchantId = process.env.POK_MERCHANT_ID;
 
   if (!apiKey || !merchantId) {
-    // Not configured yet — return a placeholder.
+    // Not configured yet — return a placeholder. Use the unguessable order
+    // id (not the sequential order number) so the confirmation page can't be
+    // enumerated by walking DEL-2026-0001, -0002, …
     return {
-      redirectUrl: `/order/${input.orderNumber}?pending=1`,
+      redirectUrl: `/order/${input.orderId}?pending=1`,
       reference: null,
       live: false,
     };
@@ -51,15 +56,15 @@ export async function createPaymentSession(
   //       currency: input.currency,
   //       reference: input.orderNumber,
   //       customer: { email: input.customerEmail, name: input.customerName },
-  //       success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/order/${input.orderNumber}?paid=1`,
-  //       cancel_url:  `${process.env.NEXT_PUBLIC_SITE_URL}/order/${input.orderNumber}?cancelled=1`,
+  //       success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/order/${input.orderId}?paid=1`,
+  //       cancel_url:  `${process.env.NEXT_PUBLIC_SITE_URL}/order/${input.orderId}?cancelled=1`,
   //     }),
   //   });
   //   const data = await res.json();
   //   return { redirectUrl: data.redirect_url, reference: data.id, live: true };
 
   return {
-    redirectUrl: `/order/${input.orderNumber}?pending=1`,
+    redirectUrl: `/order/${input.orderId}?pending=1`,
     reference: null,
     live: false,
   };

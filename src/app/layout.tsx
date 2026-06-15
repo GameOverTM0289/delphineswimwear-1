@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
-import Script from 'next/script';
 import { Analytics } from '@vercel/analytics/react';
-import { GA_ID } from '@/lib/analytics';
+import CookieConsent from '@/components/marketing/CookieConsent';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -41,18 +40,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         {children}
+        {/* Cookieless, no consent required */}
         <Analytics />
-        {GA_ID && (
-          <>
-            <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />
-            <Script id="ga4" strategy="afterInteractive">
-              {`window.dataLayer = window.dataLayer || [];
-function gtag(){dataLayer.push(arguments);}
-gtag('js', new Date());
-gtag('config', '${GA_ID}', { send_page_view: true });`}
-            </Script>
-          </>
-        )}
+        {/* Loads Google Analytics only after the visitor accepts */}
+        <CookieConsent />
       </body>
     </html>
   );

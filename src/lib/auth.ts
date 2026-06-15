@@ -9,8 +9,23 @@ import { cookies } from 'next/headers';
 
 const COOKIE_NAME = 'delphine_admin';
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
-const SESSION_SECRET =
-  process.env.ADMIN_SESSION_SECRET ?? 'dev-only-change-me-in-production';
+
+// Resolve the cookie-signing secret. In production we FAIL CLOSED: if no
+// strong secret is configured we return null so no token can be issued or
+// verified — rather than silently falling back to a known default value,
+// which would let anyone forge an admin session cookie. In development we
+// allow a fixed fallback so local work doesn't need any env setup.
+function sessionSecret(): string | null {
+  const s = process.env.ADMIN_SESSION_SECRET;
+  if (s && s.length >= 16) return s;
+  if (process.env.NODE_ENV === 'production') return null;
+  return 'dev-only-change-me-in-production';
+}
+
+/** True when a usable session secret is configured (admin login can work). */
+export function isSessionConfigured(): boolean {
+  return sessionSecret() !== null;
+}
 
 export async function verifyAdminPassword(submitted: string): Promise<boolean> {
   if (!submitted) return false;
@@ -59,10 +74,12 @@ export function getAdminNotificationEmail(): string {
 // itself contains dots (e.g. admin@delphineswimwear.com). Naively
 // splitting on '.' would yield 5 parts for that input.
 export function createAdminToken(email: string): string {
+  const secret = sessionSecret();
+  if (!secret) throw new Error('ADMIN_SESSION_SECRET_NOT_CONFIGURED');
   const issuedAt = Date.now();
   const payload = `${email}.${issuedAt}`;
   const sig = crypto
-    .createHmac('sha256', SESSION_SECRET)
+    .createHmac('sha256', secret)
     .update(payload)
     .digest('hex');
   return `${payload}.${sig}`;
@@ -70,6 +87,8 @@ export function createAdminToken(email: string): string {
 
 export function verifyAdminToken(token: string | undefined): string | null {
   if (!token) return null;
+  const secret = sessionSecret();
+  if (!secret) return null; // fail closed — no valid sessions without a secret
   // rsplit by last two dots: <email>.<issuedAt>.<sig>
   // The email may itself contain dots; only the trailing two segments
   // are the issuedAt timestamp and signature.
@@ -85,7 +104,7 @@ export function verifyAdminToken(token: string | undefined): string | null {
 
   const payload = `${email}.${issuedAt}`;
   const expectedSig = crypto
-    .createHmac('sha256', SESSION_SECRET)
+    .createHmac('sha256', secret)
     .update(payload)
     .digest('hex');
   let valid = false;

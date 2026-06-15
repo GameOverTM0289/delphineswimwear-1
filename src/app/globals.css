@@ -5283,3 +5283,122 @@ footer.site-footer {
   object-position: center center;
   background: #fff;
 }
+
+/* ─── COOKIE CONSENT ─── */
+.cookie-consent {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 300;
+  width: min(640px, calc(100vw - 32px));
+  background: var(--w);
+  color: var(--k);
+  border: 1px solid var(--line);
+  box-shadow: 0 20px 60px rgba(27, 25, 22, 0.18);
+  animation: cc-rise 0.55s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+@keyframes cc-rise {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 16px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+.cookie-consent-inner {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 20px 24px;
+}
+.cookie-consent-text {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--k);
+  font-weight: 300;
+}
+.cookie-consent-text a {
+  color: var(--k);
+  text-decoration: none;
+  border-bottom: 1px solid var(--m);
+  padding-bottom: 1px;
+  transition: border-color 0.25s ease;
+}
+.cookie-consent-text a:hover {
+  border-bottom-color: var(--k);
+}
+.cookie-consent-actions {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.cc-btn {
+  font-family: var(--sans);
+  font-size: 10.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  font-weight: 400;
+  padding: 11px 20px;
+  cursor: pointer;
+  border: 1px solid var(--k);
+  background: transparent;
+  color: var(--k);
+  transition: background 0.25s ease, color 0.25s ease, opacity 0.25s ease;
+  white-space: nowrap;
+}
+.cc-decline {
+  border-color: var(--line);
+  color: var(--m);
+}
+.cc-decline:hover {
+  color: var(--k);
+  border-color: var(--m);
+}
+.cc-accept {
+  background: var(--k);
+  color: var(--w);
+}
+.cc-accept:hover {
+  opacity: 0.85;
+}
+@media (max-width: 560px) {
+  .cookie-consent {
+    bottom: 0;
+    left: 0;
+    right: 0;
+    transform: none;
+    width: 100%;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+  }
+  @keyframes cc-rise {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .cookie-consent-inner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+    padding: 20px;
+  }
+  .cookie-consent-actions {
+    justify-content: stretch;
+  }
+  .cc-btn {
+    flex: 1;
+    padding: 13px 20px;
+  }
+}
+

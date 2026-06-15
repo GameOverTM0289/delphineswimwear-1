@@ -3,7 +3,7 @@ import Announcement from '@/components/layout/Announcement';
 import Nav from '@/components/layout/Nav';
 import Footer from '@/components/layout/Footer';
 import CartDrawer from '@/components/cart/CartDrawer';
-import { getOrderByNumber } from '@/lib/db/orders';
+import { getOrderById } from '@/lib/db/orders';
 import { formatPriceCents } from '@/lib/utils';
 
 interface Props {
@@ -25,7 +25,7 @@ function statusLabel(searchParams: { pending?: string; paid?: string; cancelled?
 export default async function OrderPage({ params, searchParams }: Props) {
   const { id } = await params;
   const sp = await searchParams;
-  const order = await getOrderByNumber(id);
+  const order = await getOrderById(id);
 
   return (
     <>
@@ -38,7 +38,7 @@ export default async function OrderPage({ params, searchParams }: Props) {
               <h1>
                 Thank <em>you</em>
               </h1>
-              <span className="num">Order · {id}</span>
+              <span className="num">Order Received</span>
               <p>
                 Your order details are not available right now — the database may not yet be
                 connected. Once it is, your order summary will appear here.

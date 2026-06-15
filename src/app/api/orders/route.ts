@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { hasDatabase } from '@/lib/prisma';
 import { OrderRequestSchema } from '@/lib/validation';
-import { createOrder, InsufficientStockError } from '@/lib/db/orders';
+import { createOrder, InsufficientStockError, UnknownProductError } from '@/lib/db/orders';
 import { notifyOrderPlaced } from '@/lib/email/notifications';
 import { orderLimiter, getClientIp } from '@/lib/ratelimit';
 import { createPaymentSession } from '@/lib/payment';
@@ -82,6 +82,7 @@ export async function POST(req: Request) {
     }
 
     const payment = await createPaymentSession({
+      orderId: order.id,
       orderNumber: order.orderNumber,
       amountCents: order.totalCents,
       currency: order.currency,
@@ -100,6 +101,12 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: 'INSUFFICIENT_STOCK', details: err.details },
         { status: 409 },
+      );
+    }
+    if (err instanceof UnknownProductError) {
+      return NextResponse.json(
+        { error: 'UNKNOWN_PRODUCT', slugs: err.slugs },
+        { status: 400 },
       );
     }
     console.error('[orders] createOrder failed:', err);

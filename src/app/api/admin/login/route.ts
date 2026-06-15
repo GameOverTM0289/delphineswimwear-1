@@ -5,6 +5,7 @@ import {
   verifyAdminPassword,
   getAdminEmail,
   isAdminConfigured,
+  isSessionConfigured,
 } from '@/lib/auth';
 import { loginLimiter, getClientIp } from '@/lib/ratelimit';
 
@@ -52,6 +53,19 @@ export async function POST(req: Request) {
       {
         error:
           'Admin credentials are not configured. Set ADMIN_EMAIL and ADMIN_PASSWORD_HASH (or ADMIN_PASSWORD), then restart the server.',
+      },
+      { status: 503 },
+    );
+  }
+
+  // Fail closed: without a strong ADMIN_SESSION_SECRET we cannot issue a
+  // tamper-proof session cookie, so refuse to log in rather than fall back
+  // to a guessable default.
+  if (!isSessionConfigured()) {
+    return NextResponse.json(
+      {
+        error:
+          'Server session secret is not configured. Set ADMIN_SESSION_SECRET (run `openssl rand -base64 32`) and redeploy.',
       },
       { status: 503 },
     );
