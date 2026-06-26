@@ -3,6 +3,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { CartLine } from '@/lib/types';
+import { trackAddToCart } from '@/lib/analytics';
 
 interface CartState {
   items: CartLine[];
@@ -35,6 +36,12 @@ export const useCart = create<CartState>()(
       toggle: () => set((s) => ({ isOpen: !s.isOpen })),
 
       add: (line) => {
+        trackAddToCart({
+          item_id: line.slug,
+          item_name: line.name,
+          price: line.price,
+          quantity: line.quantity,
+        });
         set((s) => {
           const existing = s.items.find((it) => sameLine(it, line));
           if (existing) {

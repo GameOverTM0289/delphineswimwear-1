@@ -81,28 +81,63 @@ That's it — the site is live.
 
 ---
 
-## 4. POK payment integration
+## 4. POK payment integration (live)
 
-Payment is **stubbed** for now. Orders are created in `paymentStatus: pending` and the customer is shown a "POK payment integration coming soon" message on the order confirmation page.
+Payment runs through **POK (pokpay.io)** using their hosted checkout — the buyer
+pays on POK's own page, so card data never touches this server (no PCI scope).
+Full setup + testing instructions are in **`POK-SETUP.md`**.
 
-When POK shares their API spec, edit:
+**Flow:** checkout → create POK order → redirect buyer to POK's confirm page →
+buyer pays → POK redirects back to `/order/{id}` and POSTs our webhook. Payment
+status is then confirmed by **reconciliation** (we ask POK's API directly and
+update our order), which runs on the order page, in the admin, on a "Sync with
+POK" button, and from the webhook — so a successful payment is recorded even if
+the webhook never arrives.
 
-- **`src/lib/payment.ts`** → fill in `createPaymentSession()` to call POK's API and return a real `redirectUrl`. Replace `verifyPokWebhook()` with a real signature check.
-- **`src/app/api/payment/route.ts`** → already wired to update order paymentStatus on `payment.succeeded` / `payment.failed` / `payment.refunded` events. Adjust event names to match POK's actual webhook payloads.
+Set these env vars (exact names, `POK_` prefix):
 
-The `Order` model already has a `paymentRef` field for storing POK's transaction reference and a `paymentStatus` enum for tracking state.
+```
+POK_KEY_ID=...
+POK_KEY_SECRET=...
+POK_MERCHANT_ID=...
+POK_ENV=production        # or "staging" for sandbox testing (no real charges)
+NEXT_PUBLIC_SITE_URL=https://delphineswimwear.com   # absolute https, no trailing slash
+```
+
+Leave the `POK_*` vars blank to run in **no-payment mode** (orders are saved,
+buyer lands on the order page with `?pending=1`).
+
+**Notes:**
+- POK charges **whole euros only** (€1 minimum). A fractional total (e.g. €0.10)
+  is rejected with a clear checkout message, not a charge.
+- Refunds and cancellations are one-click in the admin order page.
+- Both the Delphine order number (`DEL-2026-XXXX`) and POK's order ID are shown
+  side by side in the admin for easy reconciliation.
+
+Code: `src/lib/payment.ts` (POK API client), `src/lib/reconcile.ts` (status
+sync), `src/app/api/payment/route.ts` (webhook), `src/app/api/orders/[id]/refund`
+and `/sync` (admin actions).
 
 ---
 
 ## 5. Admin
 
-Visit **`/admin`** — you'll be redirected to `/admin/login`. Sign in with `ADMIN_EMAIL` / `ADMIN_PASSWORD` from your `.env`.
+Visit **`/admin`** — you'll be redirected to `/admin/login`. Sign in with
+`ADMIN_EMAIL` / `ADMIN_PASSWORD_HASH` (generate with `npm run admin:hash`).
 
-Currently exposed:
+Exposed:
 
-- **Orders** — list of all orders with status and payment pills.
+- **Orders** — list with status + payment pills, search/filter, metrics.
+- **Order detail** — change status (emails the customer), add DHL tracking,
+  one-click **refund**, **Sync with POK**, internal notes. Auto-syncs payment
+  status with POK on load.
+- **Products** — edit name/price/description/badge, per-size stock, colors.
+- **Messages** — contact form submissions (read/unread).
+- **Subscribers** — newsletter list with CSV export.
 
-The session uses a signed cookie (HMAC-SHA256 with `ADMIN_SESSION_SECRET`) and lasts 7 days.
+The session uses a signed cookie (HMAC-SHA256 with `ADMIN_SESSION_SECRET`),
+HttpOnly + Secure + SameSite, 7-day expiry. Login is rate-limited and fails
+closed if `ADMIN_SESSION_SECRET` isn't set. The admin UI is mobile-responsive.
 
 ---
 
@@ -170,17 +205,43 @@ delphine/
 | `npm run build` | Production build (runs `prisma generate` first) |
 | `npm run start` | Run production server |
 | `npm run db:push` | Sync Prisma schema to the database |
-| `npm run db:seed` | Seed the 6 products |
+| `npm run db:seed` | Seed the 5 products + per-size stock |
 | `npm run db:studio` | Open Prisma Studio |
+| `npm run admin:hash` | Generate a bcrypt hash for `ADMIN_PASSWORD_HASH` |
 
 ---
 
 ## 8. Notes
 
 - Cart state persists in `localStorage` under the key `delphine-cart-v1`.
-- The site currently hides the desktop nav under 900px width and shows a hamburger drawer instead.
-- Fonts (Cormorant Garamond + Inter) load from Google Fonts via `<link rel="stylesheet">` in `layout.tsx`.
-- All product imagery lives in `public/assets/products/` — replace any image while keeping the same filename and the catalog will pick it up automatically.
+- The desktop nav collapses to a hamburger drawer under 900px; the active nav
+  underline tracks the current page/category (only the clicked link is
+  underlined).
+- All product imagery lives in `public/assets/products/` — replace any image
+  while keeping the same filename and the catalog will pick it up automatically.
+- Pricing is **server-authoritative**: the browser cannot influence what a
+  customer is charged. Totals exclude VAT (sticker price is final) and shipping
+  is complimentary.
+- See **`POK-SETUP.md`** for payment setup/testing and **`DEPLOY-CHECKLIST.md`**
+  for the full go-live runbook (including the €1 end-to-end payment + refund
+  test).
+
+### Security summary (implemented)
+
+- Admin: HMAC-signed HttpOnly+Secure+SameSite cookie, bcrypt password,
+  rate-limited login with constant-time comparison, fails closed without
+  `ADMIN_SESSION_SECRET`. All `/api/admin/*`, refund, and sync routes require
+  the admin cookie.
+- Payments: hosted checkout (no PCI scope); webhook never trusts its body —
+  status is re-verified against POK's API; amount is checked before marking
+  paid; idempotent.
+- Data: Prisma parameterized queries only (no raw SQL); stock decrement is
+  race-safe (conditional `updateMany`, no oversell).
+- Headers: CSP, HSTS, X-Frame-Options DENY, nosniff, Referrer-Policy,
+  Permissions-Policy; `x-powered-by` removed. robots.txt disallows
+  admin/api/order/checkout.
+- Forms: order/contact/newsletter are Zod-validated, rate-limited, honeypot-
+  protected.
 
 ---
 

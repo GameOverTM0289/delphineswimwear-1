@@ -10,13 +10,40 @@
 
 import { prisma, hasDatabase } from '@/lib/prisma';
 import { STATIC_PRODUCTS } from '@/lib/data/products';
-import type { Product, Category } from '@/lib/types';
+import type { Product, Category, ColorOption } from '@/lib/types';
 
 const STATIC_COLORS_BY_SLUG = new Map(
   STATIC_PRODUCTS.map((p) => [p.slug, p.colors]),
 );
 
 const VALID_SIZES = ['S', 'M', 'L'];
+
+function slugify(s: string): string {
+  return (
+    s
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60) || 'product'
+  );
+}
+
+// Colors come from the DB JSON column for products created in the admin, and
+// fall back to the static catalog (by slug) for the original seeded products.
+function resolveColors(row: any): ColorOption[] | undefined {
+  if (Array.isArray(row.colors) && row.colors.length > 0) {
+    return (row.colors as ColorOption[]).map((c) => ({
+      name: c.name,
+      slug: c.slug || slugify(c.name),
+      hex: c.hex,
+      frontImage: c.frontImage,
+      backImage: c.backImage,
+      closeUpImage: c.closeUpImage || undefined,
+    }));
+  }
+  return STATIC_COLORS_BY_SLUG.get(row.slug);
+}
 
 function rowToProduct(row: any): Product {
   return {
@@ -38,7 +65,7 @@ function rowToProduct(row: any): Product {
       .filter((v: any) => VALID_SIZES.includes(v.size))
       .map((v: any) => ({ size: v.size, stock: v.stock })),
     featured: row.featured,
-    colors: STATIC_COLORS_BY_SLUG.get(row.slug),
+    colors: resolveColors(row),
   };
 }
 
@@ -109,6 +136,93 @@ export async function listProductsForAdmin(): Promise<Product[]> {
 export async function updateProduct(slug: string, data: Record<string, unknown>) {
   if (!hasDatabase()) throw new Error('DATABASE_NOT_CONFIGURED');
   return prisma.product.update({ where: { slug }, data });
+}
+
+async function uniqueSlug(base: string): Promise<string> {
+  let slug = base;
+  let n = 2;
+  // Cap the loop; collisions are rare.
+  while (n < 100 && (await prisma.product.findUnique({ where: { slug } }))) {
+    slug = `${base}-${n++}`;
+  }
+  return slug;
+}
+
+// Color as it arrives from the admin form (slug optional — derived if absent).
+export interface ColorInput {
+  name: string;
+  slug?: string;
+  hex: string;
+  frontImage: string;
+  backImage: string;
+  closeUpImage?: string;
+}
+
+export interface CreateProductInput {
+  name: string;
+  subtitle: string;
+  description: string;
+  category: Category;
+  priceCents: number;
+  badge?: string | null;
+  featured?: boolean;
+  sortOrder?: number;
+  sizes: string[];
+  stock?: Record<string, number>;
+  colors: ColorInput[];
+}
+
+/**
+ * Create a product from the admin. Derives the slug from the name, normalises
+ * each color (slug + optional third image), seeds the card images + swatch
+ * from the first color, and creates one Variant per chosen size with its
+ * initial stock. Price is stored in cents — the single source of truth that
+ * checkout + POK read back (never the browser).
+ */
+export async function createProduct(input: CreateProductInput): Promise<Product> {
+  if (!hasDatabase()) throw new Error('DATABASE_NOT_CONFIGURED');
+
+  const sizes = Array.from(new Set(input.sizes.filter((s) => VALID_SIZES.includes(s))));
+  if (sizes.length === 0) throw new Error('NO_VALID_SIZES');
+  if (!input.colors || input.colors.length === 0) throw new Error('NO_COLORS');
+
+  const colors: ColorOption[] = input.colors.map((c) => ({
+    name: c.name,
+    slug: c.slug || slugify(c.name),
+    hex: c.hex,
+    frontImage: c.frontImage,
+    backImage: c.backImage,
+    closeUpImage: c.closeUpImage || undefined,
+  }));
+  const first = colors[0];
+
+  const slug = await uniqueSlug(slugify(input.name));
+
+  const created = await prisma.product.create({
+    data: {
+      slug,
+      name: input.name,
+      subtitle: input.subtitle,
+      category: input.category,
+      description: input.description,
+      priceCents: input.priceCents,
+      currency: 'EUR',
+      badge: input.badge || null,
+      mainImage: first.frontImage,
+      altImage: first.backImage,
+      swatchHex: first.hex,
+      sizes,
+      colors: colors as unknown as object,
+      active: true,
+      featured: input.featured ?? false,
+      sortOrder: input.sortOrder ?? 0,
+      variants: {
+        create: sizes.map((size) => ({ size, stock: input.stock?.[size] ?? 0 })),
+      },
+    },
+    include: { variants: true },
+  });
+  return rowToProduct(created);
 }
 
 export async function setProductStock(slug: string, stock: Record<string, number>) {

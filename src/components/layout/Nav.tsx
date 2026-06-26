@@ -1,20 +1,67 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
 import { useCart } from '@/lib/store/cart';
 import { useUI } from '@/lib/store/ui';
 import SearchDrawer from '@/components/search/SearchDrawer';
 
-const links = [
-  { href: '/shop?cat=one-pieces', label: 'One Pieces', match: '/shop' },
-  { href: '/shop?cat=bikinis', label: 'Bikinis', match: '/shop' },
-  { href: '/shop', label: 'Collection', match: '/shop' },
+// `cat` is the category query param a link points at. For the three
+// shop links we disambiguate the active underline by category so only
+// the clicked one is highlighted:
+//   - One Pieces  → /shop?cat=one-pieces
+//   - Bikinis     → /shop?cat=bikinis
+//   - Collection  → /shop (no cat, i.e. "all")
+const links: Array<{ href: string; label: string; match: string; cat?: string }> = [
+  { href: '/shop?cat=one-pieces', label: 'One Pieces', match: '/shop', cat: 'one-pieces' },
+  { href: '/shop?cat=bikinis', label: 'Bikinis', match: '/shop', cat: 'bikinis' },
+  { href: '/shop', label: 'Collection', match: '/shop', cat: '' },
   { href: '/lookbook', label: 'Lookbook', match: '/lookbook' },
   { href: '/story', label: 'Our Story', match: '/story' },
   { href: '/contact', label: 'Contact', match: '/contact' },
 ];
+
+/**
+ * The desktop nav links. Split into its own component because it reads
+ * `useSearchParams()` (to highlight only the active category), which must
+ * live inside a <Suspense> boundary in the app router.
+ */
+function NavLinks() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentCat = searchParams.get('cat') ?? '';
+
+  const isActive = (l: { match: string; cat?: string }) => {
+    if (l.match === '/shop') {
+      // Product detail pages carry no category — highlight none of the
+      // shop links there rather than arbitrarily picking one.
+      if (pathname.startsWith('/product')) return false;
+      if (!pathname.startsWith('/shop')) return false;
+      return (l.cat ?? '') === currentCat;
+    }
+    return pathname === l.match;
+  };
+
+  return (
+    <ul className="nav-c">
+      {links.map((l) => {
+        const active = isActive(l);
+        return (
+          <li key={l.href}>
+            <Link
+              href={l.href}
+              className={active ? 'active' : ''}
+              aria-current={active ? 'page' : undefined}
+            >
+              {l.label}
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 export default function Nav() {
   const pathname = usePathname();
@@ -39,11 +86,6 @@ export default function Nav() {
     ? items.reduce((acc, it) => acc + it.quantity, 0)
     : 0;
 
-  const isActive = (match: string) =>
-    match === '/shop'
-      ? pathname.startsWith('/shop') || pathname.startsWith('/product')
-      : pathname === match;
-
   return (
     <>
       <nav className="site-nav">
@@ -52,15 +94,9 @@ export default function Nav() {
           <img src="/delphine-logo.png" alt="Delphine" />
         </Link>
 
-        <ul className="nav-c">
-          {links.map((l) => (
-            <li key={l.href}>
-              <Link href={l.href} className={isActive(l.match) ? 'active' : ''}>
-                {l.label}
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <Suspense fallback={<ul className="nav-c" />}>
+          <NavLinks />
+        </Suspense>
 
         <div className="nav-r">
           <button

@@ -254,11 +254,18 @@ export function orderPlacedEmail(d: OrderEmailData) {
 }
 
 export function orderShippedEmail(d: OrderEmailData) {
+  const trackBtn = d.trackingUrl
+    ? `<table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin:18px 0 2px;">
+         <tr><td style="background:${BRAND.ink};">
+           <a href="${escape(d.trackingUrl)}" style="display:inline-block;padding:13px 30px;font-family:${BRAND.sans};font-size:11px;letter-spacing:0.22em;text-transform:uppercase;color:#ffffff;text-decoration:none;font-weight:400;line-height:1;">Track with DHL &rarr;</a>
+         </td></tr>
+       </table>`
+    : '';
   const tracking = d.trackingNumber
-    ? `<div style="margin:24px 0 8px;padding:20px 24px;background:${BRAND.cream};border-left:3px solid ${BRAND.ink};">
-         <div style="font-family:${BRAND.sans};font-size:10.5px;letter-spacing:0.22em;text-transform:uppercase;color:${BRAND.muted};margin-bottom:6px;font-weight:400;">Tracking</div>
-         <div style="font-family:${BRAND.serif};font-size:16px;color:${BRAND.ink};font-weight:400;">${escape(d.trackingNumber)}</div>
-         ${d.trackingUrl ? `<div style="margin-top:14px;"><a href="${escape(d.trackingUrl)}" style="font-family:${BRAND.sans};font-size:11px;letter-spacing:0.22em;text-transform:uppercase;color:${BRAND.ink};text-decoration:none;border-bottom:1px solid ${BRAND.ink};padding-bottom:2px;">Track your package &rarr;</a></div>` : ''}
+    ? `<div style="margin:24px 0 8px;padding:22px 24px;background:${BRAND.cream};border-left:3px solid ${BRAND.ink};">
+         <div style="font-family:${BRAND.sans};font-size:10.5px;letter-spacing:0.22em;text-transform:uppercase;color:${BRAND.muted};margin-bottom:8px;font-weight:400;">DHL Tracking Number</div>
+         <div style="font-family:${BRAND.serif};font-size:19px;letter-spacing:0.02em;color:${BRAND.ink};font-weight:400;">${escape(d.trackingNumber)}</div>
+         ${trackBtn}
        </div>`
     : '';
   return {

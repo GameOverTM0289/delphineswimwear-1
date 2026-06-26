@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Announcement from '@/components/layout/Announcement';
@@ -10,6 +10,7 @@ import CartDrawer from '@/components/cart/CartDrawer';
 import PhoneInput from '@/components/ui/PhoneInput';
 import CountrySelect from '@/components/ui/CountrySelect';
 import { useCart } from '@/lib/store/cart';
+import { trackBeginCheckout } from '@/lib/analytics';
 import { formatPrice } from '@/lib/utils';
 import { DEFAULT_COUNTRY } from '@/lib/data/countries';
 import type { ShippingMethod } from '@/lib/types';
@@ -18,7 +19,6 @@ export default function CheckoutPage() {
   const router = useRouter();
   const [hydrated, setHydrated] = useState(false);
   const items = useCart((s) => s.items);
-  const clear = useCart((s) => s.clear);
 
   const [form, setForm] = useState({
     firstName: '',
@@ -43,6 +43,17 @@ export default function CheckoutPage() {
   >([]);
 
   useEffect(() => setHydrated(true), []);
+
+  // Fire a GA4 begin_checkout once the cart has hydrated (no-op without consent).
+  const beganCheckout = useRef(false);
+  useEffect(() => {
+    if (!hydrated || beganCheckout.current || items.length === 0) return;
+    beganCheckout.current = true;
+    trackBeginCheckout(
+      items.map((i) => ({ item_id: i.slug, item_name: i.name, price: i.price, quantity: i.quantity })),
+      items.reduce((s, i) => s + i.price * i.quantity, 0),
+    );
+  }, [hydrated, items]);
 
   const itemsSubtotalCents = useMemo(
     () => items.reduce((sum, i) => sum + Math.round(i.price * 100) * i.quantity, 0),
@@ -130,14 +141,32 @@ export default function CheckoutPage() {
           setError('Too many attempts. Please wait a moment and try again.');
         } else if (data.error === 'DATABASE_NOT_CONFIGURED') {
           setError("Checkout isn't connected to a database yet. Please email us to order.");
+        } else if (data.error === 'PAYMENT_AMOUNT') {
+          setError(
+            data.message ??
+              'This order total can\u2019t be processed. The minimum is \u20AC1 (whole euros only).',
+          );
+        } else if (data.error === 'PAYMENT_INIT_FAILED') {
+          setError(data.message ?? 'Could not start payment. Please try again.');
         } else {
           setError('Something went wrong placing your order. Please try again.');
         }
         setSubmitting(false);
         return;
       }
-      clear();
-      router.push(data.redirectUrl ?? `/order/${data.orderId}`);
+      // NOTE: we intentionally do NOT clear the bag here. If the payment
+      // fails or is abandoned on POK's page, the customer comes back with their
+      // bag intact and can check out again (creating a fresh order). The bag is
+      // cleared on the order confirmation page only once payment succeeds
+      // (see OrderCartSync).
+      const dest = data.redirectUrl ?? `/order/${data.orderId}`;
+      // POK's hosted confirm page is cross-origin — use a full navigation for
+      // absolute URLs; the Next router only handles in-app routes.
+      if (/^https?:\/\//i.test(dest)) {
+        window.location.assign(dest);
+      } else {
+        router.push(dest);
+      }
     } catch {
       setError('Network error. Please try again.');
       setSubmitting(false);

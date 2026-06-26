@@ -1,78 +1,68 @@
 import { NextResponse } from 'next/server';
 import { prisma, hasDatabase } from '@/lib/prisma';
-import { verifyPokWebhook } from '@/lib/payment';
-import { alreadyProcessed, recordWebhook } from '@/lib/db/webhooks';
+import { readPokOrder, pokConfigured } from '@/lib/payment';
+import { reconcileOrderPayment } from '@/lib/reconcile';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 /**
- * Payment webhook stub. Currently treats payloads as POK-shaped:
- *   { event, orderNumber, reference, externalId? }
+ * POK payment webhook (the order's webhookUrl).
  *
- * When POK shares their actual signature scheme, replace verifyPokWebhook
- * in lib/payment.ts. To swap to Stripe quickly, write a similar route at
- * /api/payment/stripe that maps Stripe events onto the same updates here.
+ * POK POSTs here when a payment is confirmed/captured. We do NOT trust the
+ * body — POK doesn't publish a webhook-signing scheme. Instead the webhook is
+ * just a *nudge*: we find our order from the POK id in the body, then call
+ * reconcileOrderPayment(), which re-fetches the authoritative status from
+ * POK's API and updates our order (and emails the customer) if needed.
+ *
+ * Because the same reconciliation also runs when the customer or an admin
+ * loads the order page, the system is correct even if this webhook never
+ * arrives — this handler only makes the update *faster* when it does.
+ *
+ * Idempotent and safe to call repeatedly.
  */
 export async function POST(req: Request) {
   if (!hasDatabase()) {
     return NextResponse.json({ error: 'DATABASE_NOT_CONFIGURED' }, { status: 503 });
   }
-
-  const raw = await req.text();
-  const signature = req.headers.get('x-pok-signature');
-  if (!verifyPokWebhook(raw, signature)) {
-    return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
+  if (!pokConfigured()) {
+    return NextResponse.json({ error: 'PAYMENTS_NOT_CONFIGURED' }, { status: 503 });
   }
 
-  let payload: any;
-  try { payload = JSON.parse(raw); } catch {
+  const raw = await req.text();
+  let payload: unknown;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const orderNumber = payload?.orderNumber;
-  const event = payload?.event;
-  const reference = payload?.reference ?? null;
-  const externalId = payload?.externalId ?? `${orderNumber}-${event}-${reference ?? Date.now()}`;
-
-  if (!orderNumber || !event) {
-    return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
-  }
-
-  // Idempotency — networks retry webhooks.
-  if (await alreadyProcessed(externalId)) {
-    return NextResponse.json({ ok: true, deduped: true });
+  const notified = readPokOrder(payload);
+  if (!notified.pokOrderId && !notified.merchantCustomReference) {
+    return NextResponse.json({ error: 'Missing order reference' }, { status: 400 });
   }
 
   try {
-    const order = await prisma.order.findUnique({ where: { orderNumber } });
+    // Find our order via the opaque POK id (matched to paymentRef), falling
+    // back to our order number. The POK id is never exposed to the client, so
+    // matching on it means a forged webhook can't point at someone's order.
+    let order = notified.pokOrderId
+      ? await prisma.order.findFirst({ where: { paymentRef: notified.pokOrderId } })
+      : null;
+    if (!order && notified.merchantCustomReference) {
+      order = await prisma.order.findUnique({
+        where: { orderNumber: notified.merchantCustomReference },
+      });
+    }
     if (!order) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
-    let paymentStatus = order.paymentStatus;
-    let status = order.status;
-    if (event === 'payment.succeeded') {
-      paymentStatus = 'paid';
-      if (status === 'pending') status = 'processing';
-    } else if (event === 'payment.failed') {
-      paymentStatus = 'failed';
-    } else if (event === 'payment.refunded') {
-      paymentStatus = 'refunded';
-    }
+    // Authoritative re-check + persist (+ email on first paid). The webhook
+    // body is only used to locate the order; the truth comes from POK's API.
+    const result = await reconcileOrderPayment(order as any);
 
-    await prisma.order.update({
-      where: { orderNumber },
-      data: { paymentStatus, status, paymentRef: reference ?? order.paymentRef },
-    });
-
-    await recordWebhook({
-      externalId,
-      provider: 'pok',
-      eventType: event,
-      payload,
-    });
-
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, status: result.paymentStatus, changed: result.changed });
   } catch (err) {
     console.error('[payment webhook]', err);
     return NextResponse.json({ error: 'Could not process webhook' }, { status: 500 });

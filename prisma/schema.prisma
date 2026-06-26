@@ -29,6 +29,11 @@ model Product {
   // Per-product list of sizes that exist for this style. Stock is
   // tracked per-size in the Variant table.
   sizes       String[] @default(["S", "M", "L"])
+  // Colors offered, with per-color front/back/third images. Stored as a
+  // JSON array of { name, slug, hex, frontImage, backImage, closeUpImage? }.
+  // When null (legacy rows) the design assets are read from the static
+  // catalog by slug. New products created in the admin write this directly.
+  colors      Json?
   active      Boolean  @default(true)
   featured    Boolean  @default(false)
   sortOrder   Int      @default(0)

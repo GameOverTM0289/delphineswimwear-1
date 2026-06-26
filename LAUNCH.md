@@ -213,8 +213,8 @@ If everything passes, you're launch-ready.
 
 ## What's not yet built (known gaps)
 
-- POK payment integration is a stub. The webhook handler is in place; replace `verifyPokWebhook` in `src/lib/payment.ts` once you have the signing scheme.
-  - **Stripe alternative**: ~2 hours to wire up. Use Stripe Checkout Sessions, redirect from `/api/orders` POST, listen on `/api/payment/stripe`.
+- POK payment integration is LIVE (hosted-checkout model). See `POK-SETUP.md` for the env vars and the end-to-end test procedure.
+  - Set `POK_KEY_ID`, `POK_KEY_SECRET`, `POK_MERCHANT_ID`, and `POK_ENV` in Vercel. Leave them blank to run in no-payment mode (orders are saved, buyer lands on the order page with `?pending=1`).
 - No customer accounts. Reasonable for a luxury brand at launch.
 - No discount codes. Easy to add when needed.
 - No multi-currency display. Prices in EUR, customer charged in EUR.

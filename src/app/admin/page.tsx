@@ -1,9 +1,12 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import AdminShell from '@/components/admin/AdminShell';
-import { readAdminEmailFromCookie } from '@/lib/auth';
+import { readAdminEmailFromCookie, isSessionConfigured } from '@/lib/auth';
 import { listOrders, getOrderMetrics } from '@/lib/db/orders';
 import { hasDatabase } from '@/lib/prisma';
+import { EMAIL_ENABLED } from '@/lib/email';
+import { RATE_LIMITING_ENABLED } from '@/lib/ratelimit';
+import { pokConfigured } from '@/lib/payment';
 import { formatPriceCents, formatDate } from '@/lib/utils';
 import type { OrderStatus } from '@/lib/types';
 
@@ -32,9 +35,30 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
   const orders = ready ? await listOrders({ status, search: q, limit: 200 }) : [];
   const metrics = ready ? await getOrderMetrics() : null;
 
+  const systems: Array<{ label: string; ok: boolean; hint: string }> = [
+    { label: 'Database', ok: ready, hint: 'DATABASE_URL' },
+    { label: 'Emails', ok: EMAIL_ENABLED, hint: 'RESEND_API_KEY' },
+    { label: 'Rate limiting', ok: RATE_LIMITING_ENABLED, hint: 'UPSTASH_REDIS_REST_*' },
+    { label: 'Admin sessions', ok: isSessionConfigured(), hint: 'ADMIN_SESSION_SECRET' },
+    { label: 'Payments (POK)', ok: pokConfigured(), hint: 'POK_KEY_ID / SECRET / MERCHANT_ID' },
+  ];
+
   return (
     <AdminShell>
       <h1><em>Orders</em></h1>
+
+      <div className="admin-status" aria-label="System status">
+        {systems.map((s) => (
+          <span
+            key={s.label}
+            className={`sys-pill ${s.ok ? 'on' : 'off'}`}
+            title={s.ok ? `${s.label}: configured` : `${s.label}: set ${s.hint}`}
+          >
+            <span className="sys-dot" aria-hidden />
+            {s.label}
+          </span>
+        ))}
+      </div>
 
       {!ready && (
         <div className="admin-empty">

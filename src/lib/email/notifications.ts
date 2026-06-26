@@ -15,6 +15,7 @@ import {
 import { getAdminNotificationEmail } from '@/lib/auth';
 import type { OrderStatus } from '@/lib/types';
 import { findCountry } from '@/lib/data/countries';
+import { resolveTrackingUrl } from '@/lib/utils';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://delphine.com';
 
@@ -56,7 +57,9 @@ function emailDataFromOrder(o: OrderRow) {
     totalCents: o.totalCents,
     shippingMethod: o.shippingMethod === 'express' ? 'Express' : 'Standard',
     trackingNumber: o.trackingNumber,
-    trackingUrl: o.trackingUrl,
+    // Fall back to a DHL tracking link built from the number when no explicit
+    // URL was set, so the shipped email always has a working "Track" button.
+    trackingUrl: resolveTrackingUrl(o.trackingNumber, o.trackingUrl),
     address: {
       line1: o.address1,
       line2: o.address2,
@@ -91,6 +94,16 @@ export async function notifyOrderStatusChange(
     default:
       return { ok: true, id: 'no-email-for-status' };
   }
+  return sendEmail({ to: order.email, subject: t.subject, html: t.html, text: t.text });
+}
+
+/**
+ * Email the customer that their order was refunded. Reuses the cancelled
+ * template, which tells them to expect the refund within a few business days.
+ */
+export async function notifyOrderRefunded(order: OrderRow) {
+  const data = emailDataFromOrder(order);
+  const t = orderCancelledEmail(data);
   return sendEmail({ to: order.email, subject: t.subject, html: t.html, text: t.text });
 }
 

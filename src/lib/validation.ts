@@ -77,6 +77,18 @@ export const NewsletterSubscribeSchema = z.object({
 
 // ── Product editor (admin) ───────────────────────────────────────────
 
+const SIZE = z.enum(['S', 'M', 'L']);
+
+// One color a product is offered in, with its front / back / third images.
+export const ColorInputSchema = z.object({
+  name: z.string().min(1).max(40),
+  slug: z.string().min(1).max(40).optional(),
+  hex: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  frontImage: z.string().min(1).max(400),
+  backImage: z.string().min(1).max(400),
+  closeUpImage: z.string().max(400).optional().or(z.literal('')),
+});
+
 export const ProductUpdateSchema = z.object({
   name: z.string().min(1).max(160).optional(),
   subtitle: z.string().min(1).max(200).optional(),
@@ -90,7 +102,23 @@ export const ProductUpdateSchema = z.object({
   featured: z.boolean().optional(),
   sortOrder: z.number().int().min(0).max(9999).optional(),
   category: z.enum(['one-pieces', 'bikinis']).optional(),
+  colors: z.array(ColorInputSchema).min(1).max(8).optional(),
 });
+
+export const ProductCreateSchema = z.object({
+  name: z.string().min(1).max(160),
+  subtitle: z.string().min(1).max(200),
+  description: z.string().min(1).max(5000),
+  category: z.enum(['one-pieces', 'bikinis']),
+  priceCents: z.number().int().min(0).max(10_000_000),
+  badge: z.string().max(40).nullable().optional(),
+  featured: z.boolean().optional(),
+  sortOrder: z.number().int().min(0).max(9999).optional(),
+  sizes: z.array(SIZE).min(1),
+  stock: z.record(SIZE, z.number().int().min(0).max(9999)).optional(),
+  colors: z.array(ColorInputSchema).min(1).max(8),
+});
+export type ProductCreateInput = z.infer<typeof ProductCreateSchema>;
 
 export const StockUpdateSchema = z.object({
   stock: z.record(z.enum(['S', 'M', 'L']), z.number().int().min(0).max(9999)),

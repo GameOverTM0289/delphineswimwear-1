@@ -3,7 +3,9 @@ import AdminShell from '@/components/admin/AdminShell';
 import OrderEditor from '@/components/admin/OrderEditor';
 import { readAdminEmailFromCookie } from '@/lib/auth';
 import { getOrderById } from '@/lib/db/orders';
+import { reconcileOrderPayment } from '@/lib/reconcile';
 import { hasDatabase } from '@/lib/prisma';
+import { pokConfigured } from '@/lib/payment';
 import { formatPriceCents, formatDate } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -16,8 +18,22 @@ export default async function OrderDetailPage({
   if (!(await readAdminEmailFromCookie())) redirect('/admin/login');
   if (!hasDatabase()) redirect('/admin');
   const { id } = await params;
-  const order = await getOrderById(id);
+  let order = await getOrderById(id);
   if (!order) notFound();
+
+  // Auto-sync with POK whenever an admin opens the order, so payment status is
+  // always current without anyone checking the POK dashboard manually.
+  if (order.paymentStatus === 'pending' && order.paymentRef) {
+    try {
+      const r = await reconcileOrderPayment(order);
+      if (r.changed) {
+        const fresh = await getOrderById(id);
+        if (fresh) order = fresh;
+      }
+    } catch {
+      /* best-effort */
+    }
+  }
 
   return (
     <AdminShell>
@@ -98,12 +114,27 @@ export default async function OrderDetailPage({
             <p style={{ marginBottom: 14 }}>
               Payment: <span className={`pill ${order.paymentStatus}`}>{order.paymentStatus}</span>
             </p>
+            <div className="order-ids">
+              <div>
+                <span className="order-ids-lab">Order number</span>
+                <code>{order.orderNumber}</code>
+              </div>
+              <div>
+                <span className="order-ids-lab">POK order ID</span>
+                <code>{order.paymentRef ?? '—'}</code>
+              </div>
+            </div>
             <OrderEditor
               id={order.id}
               status={order.status}
               trackingNumber={order.trackingNumber ?? ''}
               trackingUrl={order.trackingUrl ?? ''}
               notes={order.notes ?? ''}
+              paymentStatus={order.paymentStatus}
+              paymentRef={order.paymentRef}
+              totalCents={order.totalCents}
+              currency={order.currency}
+              pokConfigured={pokConfigured()}
             />
           </div>
         </div>

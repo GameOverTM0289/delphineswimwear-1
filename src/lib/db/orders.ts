@@ -168,11 +168,12 @@ export async function createOrder({ body }: CreateOrderArgs): Promise<OrderRow> 
     });
 
     const insufficient: InsufficientStockError['details'] = [];
-    const stockOps: Promise<unknown>[] = [];
 
+    // First pass: surface any obviously-insufficient stock with a friendly
+    // error (so the customer sees "only N left" rather than a generic failure).
     for (const item of body.items) {
       const product = productBySlug.get(item.slug);
-      if (!product) continue; // guest items without DB products: no stock check possible
+      if (!product) continue; // guest items without DB products: no stock check
       const variant = product.variants.find((v: any) => v.size === item.size);
       if (!variant) continue; // stock not tracked for this size yet
       if (variant.stock < item.quantity) {
@@ -182,20 +183,42 @@ export async function createOrder({ body }: CreateOrderArgs): Promise<OrderRow> 
           requested: item.quantity,
           available: variant.stock,
         });
-      } else {
-        stockOps.push(
-          tx.variant.update({
-            where: { id: variant.id },
-            data: { stock: { decrement: item.quantity } },
-          }),
-        );
+      }
+    }
+    if (insufficient.length > 0) {
+      throw new InsufficientStockError(insufficient);
+    }
+
+    // Second pass: decrement atomically with a guard condition. updateMany
+    // with `stock: { gte: qty }` only updates rows that still have enough
+    // stock at write time, returning the number of rows changed. If two
+    // orders race for the last unit, exactly one update affects a row; the
+    // other affects zero and we roll back by throwing. This closes the
+    // check-then-decrement race at the database level (no oversell).
+    for (const item of body.items) {
+      const product = productBySlug.get(item.slug);
+      if (!product) continue;
+      const variant = product.variants.find((v: any) => v.size === item.size);
+      if (!variant) continue;
+      const res = await tx.variant.updateMany({
+        where: { id: variant.id, stock: { gte: item.quantity } },
+        data: { stock: { decrement: item.quantity } },
+      });
+      if (res.count === 0) {
+        // Lost the race (or stock changed) — re-read for an accurate message.
+        const fresh = await tx.variant.findUnique({ where: { id: variant.id } });
+        insufficient.push({
+          slug: item.slug,
+          size: item.size,
+          requested: item.quantity,
+          available: fresh?.stock ?? 0,
+        });
       }
     }
 
     if (insufficient.length > 0) {
       throw new InsufficientStockError(insufficient);
     }
-    await Promise.all(stockOps);
 
     // Reserve a sequence by inserting first; orderNumber filled in via update
     // is unnecessary because Prisma's autoincrement seq is set on insert.
@@ -267,6 +290,44 @@ export async function getOrderByNumber(orderNumber: string): Promise<OrderRow | 
     include: { items: true },
   });
   return o ? rowToOrder(o) : null;
+}
+
+/**
+ * Store the payment provider's order reference (POK sdkOrder id) on our order.
+ * The webhook handler later requires the incoming POK order id to match this
+ * value — and since the id is never exposed to the client, that match is what
+ * proves a webhook genuinely came from POK.
+ */
+export async function attachPaymentReference(
+  orderId: string,
+  reference: string,
+): Promise<void> {
+  if (!hasDatabase()) return;
+  await prisma.order.update({
+    where: { id: orderId },
+    data: { paymentRef: reference },
+  });
+}
+
+/**
+ * Set the payment status (and optionally the order status) after a payment
+ * action such as a refund or cancellation. Returns the refreshed order.
+ */
+export async function setOrderPaymentStatus(
+  id: string,
+  paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded',
+  orderStatus?: OrderStatus,
+): Promise<OrderRow> {
+  if (!hasDatabase()) throw new Error('DATABASE_NOT_CONFIGURED');
+  const row = await prisma.order.update({
+    where: { id },
+    data: {
+      paymentStatus,
+      ...(orderStatus ? { status: orderStatus } : {}),
+    },
+    include: { items: true },
+  });
+  return rowToOrder(row);
 }
 
 export async function listOrders(opts: {

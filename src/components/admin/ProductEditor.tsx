@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Product } from '@/lib/types';
+import ColorListEditor, { ColorDraft, emptyColor } from '@/components/admin/ColorListEditor';
 
 interface Props {
   product: Product;
@@ -14,14 +15,12 @@ export default function ProductEditor({ product }: Props) {
     name: product.name,
     subtitle: product.subtitle,
     description: product.description,
-    priceCents: product.priceCents,
+    priceEur: String(product.priceCents / 100),
     badge: product.badge ?? '',
     mainImage: product.mainImage,
     altImage: product.altImage,
     swatchHex: product.swatchHex,
-    active: true, // not exposed on Product type yet — defaults to true
     featured: product.featured,
-    sortOrder: 0,
   });
   const [stock, setStock] = useState<Record<string, number>>(() => {
     const map: Record<string, number> = {};
@@ -31,32 +30,52 @@ export default function ProductEditor({ product }: Props) {
     });
     return map;
   });
+  const [colors, setColors] = useState<ColorDraft[]>(() => {
+    const initial = (product.colors ?? []).map((c) => ({
+      name: c.name,
+      hex: c.hex,
+      frontImage: c.frontImage,
+      backImage: c.backImage,
+      closeUpImage: c.closeUpImage ?? '',
+    }));
+    return initial.length > 0 ? initial : [emptyColor()];
+  });
   const [savingDetails, setSavingDetails] = useState(false);
   const [savingStock, setSavingStock] = useState(false);
+  const [savingColors, setSavingColors] = useState(false);
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
   const update = (key: string, value: unknown) => setForm((f) => ({ ...f, [key]: value }));
 
+  const patch = async (body: Record<string, unknown>) => {
+    const res = await fetch(`/api/admin/products/${product.slug}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error('save failed');
+  };
+
   const onSaveDetails = async () => {
+    const price = Number(form.priceEur);
+    if (!Number.isFinite(price) || price < 0) {
+      setMsg({ type: 'err', text: 'Enter a valid price.' });
+      return;
+    }
     setSavingDetails(true);
     setMsg(null);
     try {
-      const res = await fetch(`/api/admin/products/${product.slug}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: form.name,
-          subtitle: form.subtitle,
-          description: form.description,
-          priceCents: Number(form.priceCents),
-          badge: form.badge || null,
-          mainImage: form.mainImage,
-          altImage: form.altImage,
-          swatchHex: form.swatchHex,
-          featured: form.featured,
-        }),
+      await patch({
+        name: form.name,
+        subtitle: form.subtitle,
+        description: form.description,
+        priceCents: Math.round(price * 100),
+        badge: form.badge || null,
+        mainImage: form.mainImage,
+        altImage: form.altImage,
+        swatchHex: form.swatchHex,
+        featured: form.featured,
       });
-      if (!res.ok) throw new Error('save failed');
       setMsg({ type: 'ok', text: 'Saved.' });
       router.refresh();
     } catch {
@@ -85,6 +104,34 @@ export default function ProductEditor({ product }: Props) {
     }
   };
 
+  const onSaveColors = async () => {
+    for (const [i, c] of colors.entries()) {
+      if (!c.name.trim() || !/^#[0-9a-fA-F]{6}$/.test(c.hex) || !c.frontImage.trim() || !c.backImage.trim()) {
+        setMsg({ type: 'err', text: `Color ${i + 1}: name, hex, front & back images are required.` });
+        return;
+      }
+    }
+    setSavingColors(true);
+    setMsg(null);
+    try {
+      await patch({
+        colors: colors.map((c) => ({
+          name: c.name.trim(),
+          hex: c.hex,
+          frontImage: c.frontImage.trim(),
+          backImage: c.backImage.trim(),
+          closeUpImage: c.closeUpImage.trim() || undefined,
+        })),
+      });
+      setMsg({ type: 'ok', text: 'Colors updated.' });
+      router.refresh();
+    } catch {
+      setMsg({ type: 'err', text: 'Failed to save colors.' });
+    } finally {
+      setSavingColors(false);
+    }
+  };
+
   return (
     <>
       <h1 style={{ fontSize: 26, fontWeight: 300 }}>{product.name}</h1>
@@ -104,11 +151,13 @@ export default function ProductEditor({ product }: Props) {
               <label className="lab">Description</label>
               <textarea value={form.description} onChange={(e) => update('description', e.target.value)} rows={5} />
 
-              <label className="lab">Price (cents)</label>
+              <label className="lab">Price (EUR)</label>
               <input
                 type="number"
-                value={form.priceCents}
-                onChange={(e) => update('priceCents', e.target.value)}
+                min={0}
+                step="1"
+                value={form.priceEur}
+                onChange={(e) => update('priceEur', e.target.value)}
               />
 
               <label className="lab">Badge</label>
@@ -132,6 +181,17 @@ export default function ProductEditor({ product }: Props) {
                 {savingDetails ? 'Saving…' : 'Save details'} <span className="ar">→</span>
               </button>
             </div>
+          </div>
+
+          <div className="admin-card">
+            <h3>Colors &amp; images</h3>
+            <p style={{ color: 'var(--m)', fontSize: 13, marginBottom: 14 }}>
+              Swatches and per-color front / back / third images shown on the product page.
+            </p>
+            <ColorListEditor value={colors} onChange={setColors} />
+            <button onClick={onSaveColors} disabled={savingColors} className="btn btn-dark" style={{ marginTop: 16 }}>
+              {savingColors ? 'Saving…' : 'Save colors'} <span className="ar">→</span>
+            </button>
           </div>
         </div>
 

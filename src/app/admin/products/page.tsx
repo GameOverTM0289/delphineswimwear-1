@@ -21,9 +21,14 @@ export default async function AdminProductsPage() {
   const products = await listProductsForAdmin();
   return (
     <AdminShell>
-      <h1><em>Products</em></h1>
+      <div className="admin-head-row">
+        <h1><em>Products</em></h1>
+        <Link href="/admin/products/new" className="btn btn-dark btn-sm">
+          + New product
+        </Link>
+      </div>
       <p style={{ color: 'var(--m)', marginBottom: 28 }}>
-        Edit product copy, image paths, and per-size stock. Changes go live immediately.
+        Edit product copy, price, image paths, and per-size stock. Changes go live immediately.
       </p>
       <div className="admin-card" style={{ padding: 0 }}>
         <table className="admin-table">

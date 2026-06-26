@@ -3448,6 +3448,109 @@ footer.site-footer {
 .order-editor-msg.ok { color: #2c7a45; }
 .order-editor-msg.err { color: #b53538; }
 
+/* ── Order IDs (admin: our number + POK id side by side) ─────────── */
+.order-ids {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 0.5px solid var(--line);
+}
+.order-ids > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.order-ids-lab {
+  font-family: var(--sans);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--m);
+}
+.order-ids code {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 12.5px;
+  color: var(--k);
+  word-break: break-all;
+}
+
+/* ── Sync-with-POK control ───────────────────────────────────────── */
+.sync-section {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 0.5px solid var(--line);
+}
+.sync-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+.sync-row .btn {
+  margin-top: 0;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* ── Refund control (admin order detail) ─────────────────────────── */
+.refund-section {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 0.5px solid var(--line);
+}
+.refund-title {
+  font-family: var(--sans);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--m);
+  margin: 0 0 10px;
+}
+.refund-note {
+  font-size: 13px;
+  color: var(--m);
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+.refund-note.refund-done {
+  color: #2c7a45;
+}
+.refund-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.refund-warn {
+  font-size: 12.5px;
+  color: #b53538;
+  line-height: 1.5;
+  margin: 4px 0 0;
+}
+.refund-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.refund-actions .btn {
+  margin-top: 0;
+}
+.btn-danger {
+  border-color: #b53538 !important;
+  color: #b53538 !important;
+}
+.btn-danger.btn-dark {
+  background: #b53538 !important;
+  border-color: #b53538 !important;
+  color: #fff !important;
+}
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .stock-row {
   display: grid;
   grid-template-columns: 60px 1fr;
@@ -3530,6 +3633,117 @@ footer.site-footer {
   padding: 8px 16px;
   font-size: 10px;
 }
+
+/* ── Admin: header row + system status ── */
+.admin-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.admin-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0 26px;
+}
+.sys-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--sans);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--k);
+  background: var(--w);
+  border: 1px solid var(--line);
+  padding: 7px 13px;
+  cursor: default;
+}
+.sys-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.sys-pill.on .sys-dot { background: #2c7a45; }
+.sys-pill.off .sys-dot { background: #c8962f; }
+.sys-pill.off { color: var(--m); }
+
+/* ── Admin: product create/edit (colors + sizes) ── */
+.size-stock-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+.size-stock-row .check { margin: 0; min-width: 110px; }
+.size-stock-row input { flex: 1; max-width: 140px; }
+
+.color-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.color-row {
+  border: 1px solid var(--line);
+  padding: 16px 18px;
+  background: var(--c);
+}
+.color-row-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.color-row-head strong {
+  font-family: var(--sans);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+.color-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.color-remove {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #b53538;
+}
+.color-hex-field {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.color-hex-field input[type='color'] {
+  width: 42px;
+  min-width: 42px;
+  height: 38px;
+  padding: 2px;
+  cursor: pointer;
+}
+.color-add { align-self: flex-start; }
+
+.track-preview {
+  font-family: var(--sans);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--m);
+  margin: -6px 0 4px;
+}
+.track-preview a { color: var(--k); }
+.track-warn { color: #b06a1f; }
 
 /* ── Newsletter signup ── */
 .newsletter {
@@ -4481,6 +4695,43 @@ footer.site-footer {
   .admin-table td {
     padding: 10px;
   }
+  /* Order detail: stack the two columns. */
+  .admin-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  /* Metrics: 2-up instead of 4-up. */
+  .admin-metrics {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  /* Let wide tables scroll horizontally instead of overflowing the page. */
+  .admin-card {
+    overflow-x: auto;
+  }
+  .admin-main h1 {
+    font-size: 28px;
+    margin-bottom: 20px;
+  }
+  .refund-actions {
+    flex-direction: column;
+  }
+  .refund-actions .btn {
+    width: 100%;
+    text-align: center;
+  }
+  .sync-row {
+    flex-direction: column;
+  }
+  .sync-row .btn {
+    width: 100%;
+    text-align: center;
+  }
+  .order-editor button,
+  .admin-form button {
+    width: 100%;
+    text-align: center;
+  }
   .checkout-form .row2 {
     grid-template-columns: 1fr;
   }
@@ -4504,6 +4755,19 @@ footer.site-footer {
   .pgrid,
   .shop-grid {
     grid-template-columns: 1fr;
+  }
+  /* Admin: single-column metrics + tighter chrome on small phones. */
+  .admin-metrics {
+    grid-template-columns: 1fr;
+  }
+  .admin-main {
+    padding: 20px 16px;
+  }
+  .admin-card {
+    padding: 18px 16px;
+  }
+  .admin-side {
+    padding: 14px 16px;
   }
   .fg {
     grid-template-columns: repeat(3, minmax(0, 1fr));
